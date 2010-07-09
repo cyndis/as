@@ -150,11 +150,15 @@ class AS::Parser
 		end
 	end
 
+	REGISTER_REGEXP = Regexp.union(*%w(r0 r1 r2 r3 r4 r5 r6 r7 r8 r9 r10 r11 r12
+	   r13 r14 r15 a1 a2 a3 a4 v1 v2 v3 v4 v5 v6
+	   rfp sl fp ip sp lr pc
+	))
 	class RegisterArgNode < ArgNode
 		attr_accessor :name
 	end
 	def parse_register(s)
-		if (m = s.scan(/([a-z0-9]+)/))
+		if (m = s.scan_str(REGISTER_REGEXP))
 			RegisterArgNode.new(s) { |n|
 				n.name = m[0]
 			}
@@ -165,7 +169,7 @@ class AS::Parser
 		attr_accessor :value
 	end
 	def parse_num_literal(s)
-		if (m = s.scan(/#(\d+)/))
+		if (m = s.scan(/#(-?\d+)/))
 			NumLiteralArgNode.new(s) { |n|
 				n.value = m[0].to_i
 			}
@@ -176,7 +180,7 @@ class AS::Parser
 		attr_accessor :label
 	end
 	def parse_label_ref(s)
-		if (m = s.scan(/:(\w+)/))
+		if (m = s.scan(/(\w+)/))
 			LabelRefArgNode.new(s) { |n|
 				n.label = m[0]
 			}
