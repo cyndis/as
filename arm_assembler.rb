@@ -50,6 +50,8 @@ class AS::ARM::Instruction
 	attr_reader :opcode, :args
 
 	OPC_DATA_PROCESSING = 0b00
+	# These are used differently in the
+	# instruction encoders
 	OPCODES = {
 		:adc => 0b0101, :add => 0b0100,
 		:and => 0b0000, :bic => 0b1110,
@@ -67,7 +69,8 @@ class AS::ARM::Instruction
 		:tst => 0b1000,
 
 		:b => 0b1010,
-		:bl => 0b1011
+		:bl => 0b1011,
+		:bx => 0b00010010
 	}
 	COND_BITS = {
 		:al => 0b1110, :eq => 0b0000,
@@ -122,6 +125,10 @@ class AS::ARM::Instruction
 				io << "\x00\x00\x00"
 			end
 			io.write_uint8 OPCODES[opcode] | (COND_BITS[@cond] << 4)
+		when :bx
+			rm = reg_ref(args[0])
+			io.write_uint32 rm | (0b1111111111110001 << 4) | (OPCODES[:bx] << 16+4) |
+			                (COND_BITS[@cond] << 16+4+8)
 		else
 			raise AS::AssemblyError.new("unknown instruction #{opcode}", @node)
 		end
