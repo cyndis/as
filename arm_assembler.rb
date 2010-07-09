@@ -115,7 +115,7 @@ class AS::ARM::Instruction
 				# TODO add check that the value fits into 24 bits
 				io << packed[0,3]
 			elsif (arg.is_a?(AS::Parser::LabelRefArgNode))
-				as.register_label_callback(arg.label, io.tell) { |io, reloc_pos|
+				as.register_label_callback(arg.label, io.tell, arg) { |io, reloc_pos|
 					# subtract 8 because of pipeline
 					diff = reloc_pos - io.tell - 8
 					packed = [diff >> 2].pack('l')

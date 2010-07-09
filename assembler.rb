@@ -91,8 +91,8 @@ class AS::Assembler
 		}
 	end
 
-	def register_label_callback(label, io_pos, &block)
-		@label_callbacks << [label, io_pos, block]
+	def register_label_callback(label, io_pos, node, &block)
+		@label_callbacks << [label, io_pos, block, node]
 	end
 
 	def assemble(io)
@@ -110,7 +110,7 @@ class AS::Assembler
 		}
 
 		@label_callbacks.each { |data|
-			label, io_pos, block = *data
+			label, io_pos, block, node = *data
 			if (label_obj = @label_objects[label])
 				symbol = @symbols[label_obj]
 				io.seek io_pos
@@ -119,7 +119,7 @@ class AS::Assembler
 				# trying to resolve label that is not found
 				# TODO add to elf relocation table so that
 				#      external symbols can be used
-				raise 'cannot resolve address of undefined symbol'
+				raise AS::AssemblyError.new('cannot resolve address of undefined symbol', node)
 			end
 		}
 
