@@ -65,6 +65,9 @@ class AS::ARM::Instruction
 		:cmp => 0b1010,
 		:teq => 0b1001,
 		:tst => 0b1000,
+
+		:b => 0b1010,
+		:bl => 0b1011
 	}
 	COND_BITS = {
 		:al => 0b1110, :eq => 0b0000,
@@ -100,6 +103,25 @@ class AS::ARM::Instruction
 			a.rd = reg_ref(args[0])
 			a.build_operand args[1]
 			a.write io
+		when :b, :bl
+			arg = args[0]
+			if (arg.is_a?(AS::Parser::NumLiteralArgNode))
+				jmp_val = arg.value >> 2
+				packed = [jmp_val].pack('l')
+				# signed 32-bit, condense to 24-bit
+				# TODO add check that the value fits into 24 bits
+				io << packed[0,3]
+			elsif (arg.is_a?(AS::Parser::LabelRefArgNode))
+				as.register_label_callback(arg.label, io.tell) { |io, reloc_pos|
+					# subtract 8 because of pipeline
+					diff = reloc_pos - io.tell - 8
+					packed = [diff >> 2].pack('l')
+					# TODO see prev. todo
+					io << packed[0,3]
+				}
+				io << "\x00\x00\x00"
+			end
+			io.write_uint8 OPCODES[opcode] | (COND_BITS[@cond] << 4)
 		else
 			raise AS::AssemblyError.new("unknown instruction #{opcode}", @node)
 		end
