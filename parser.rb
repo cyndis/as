@@ -25,9 +25,14 @@ class AS::Parser
 	end
 
 	class Node
-		def initialize(s)
-			@line = s.prev_line
-			@column = s.prev_column
+		def initialize(s = nil)
+			if (s)
+				@line = s.prev_line
+				@column = s.prev_column
+			else
+				@line = 0
+				@column = 0
+			end
 
 			yield self if block_given?
 		end

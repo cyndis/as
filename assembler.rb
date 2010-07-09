@@ -11,6 +11,7 @@ end
 
 require 'parser'
 require 'arm_assembler'
+require 'elfobject'
 
 class Numeric
 	def fits_u8?
@@ -18,18 +19,25 @@ class Numeric
 	end
 end
 
-class AS::Section
-	def initialize(name, contents)
+class AS::LabelObject
+	def initialize(name)
 		@name = name
-		@contents = contents
 		@linkage = ELF::STB_LOCAL
 	end
-	attr_accessor :name, :contents, :linkage
+	attr_accessor :name, :linkage
 
 	def assemble(io, as)
-		contents.each { |cont|
-			cont.assemble io, as
-		}
+		as.add_symbol self, io.tell
+	end
+end
+
+class AS::DataObject
+	def initialize(data)
+		@data = data
+	end
+
+	def assemble(io, as)
+		io << @data
 	end
 end
 
@@ -37,33 +45,45 @@ class AS::Assembler
 	def initialize(asm_arch)
 		@asm_arch = asm_arch
 
-		@sections = []
-		new_section "as_toplevel"
+		@objects = []
 
-		@section_linkage = {}
+		@label_linkage = {}
+		@label_objects = {}
+		@label_callbacks = []
+
+		@symbols = {}
 	end
 
-	def new_section(name)
-		sec = AS::Section.new(name, [])
-		@sections << @current_section = sec
+	def add_object(obj)
+		@objects << obj
+	end
+
+	def add_symbol(symbol, addr)
+		@symbols[symbol] = addr
 	end
 
 	def load_ast(ast)
 		ast.children.each { |cmd|
 			if (cmd.is_a?(AS::Parser::LabelNode))
-				new_section cmd.name
+				add_object label = AS::LabelObject.new(cmd.name)
+				@label_objects[cmd.name] = label
 			elsif (cmd.is_a?(AS::Parser::InstructionNode))
-				@current_section.contents << @asm_arch::Instruction.new(cmd)
+				add_object @asm_arch::Instruction.new(cmd)
 			elsif (cmd.is_a?(AS::Parser::DirectiveNode))
 				if (cmd.name == 'global')
-					if (not @section_linkage[cmd.value])
-						@section_linkage[cmd.value] = [ELF::STB_GLOBAL, cmd]
+					if (not @label_linkage[cmd.value])
+						@label_linkage[cmd.value] = [ELF::STB_GLOBAL, cmd]
 					else
 						raise AS::AssemblyError.new(
 							'cannot change already specified linkage of section',
 							cmd
 						)
 					end
+				elsif (cmd.name == "hexdata")
+					bytes = cmd.value.strip.split(/\s+/).map { |hex|
+						hex.to_i(16)
+					}.pack('C*')
+					add_object AS::DataObject.new(bytes)
 				else
 					raise AS::AssemblyError.new('unknown directive', cmd)
 				end
@@ -71,21 +91,38 @@ class AS::Assembler
 		}
 	end
 
+	def register_label_callback(label, io_pos, &block)
+		@label_callbacks << [label, io_pos, block]
+	end
+
 	def assemble(io)
-		@section_linkage.each_pair { |name, data|
+		@label_linkage.each_pair { |name, data|
 			linkage, node = *data
-			if (sec = @sections.find { |sec| sec.name == name })
-				sec.linkage = linkage
+			if (label = @label_objects[name])
+				label.linkage = linkage
 			else
 				raise AS::AssemblyError.new('cannot change linkage of undefined section', node)
 			end
 		}
 
-		addr_table = {}
-		@sections.each { |section|
-			addr_table[section] = io.tell unless section.name == "as_toplevel"
-			section.assemble io, self
+		@objects.each { |obj|
+			obj.assemble io, self
 		}
-		addr_table
+
+		@label_callbacks.each { |data|
+			label, io_pos, block = *data
+			if (label_obj = @label_objects[label])
+				symbol = @symbols[label_obj]
+				io.seek io_pos
+				block.call io, symbol
+			else
+				# trying to resolve label that is not found
+				# TODO add to elf relocation table so that
+				#      external symbols can be used
+				raise 'cannot resolve address of undefined symbol'
+			end
+		}
+
+		@symbols
 	end
 end
