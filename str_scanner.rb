@@ -3,7 +3,7 @@ module AS; end
 if (not defined? RUBY_ENGINE or not RUBY_ENGINE == 'rbx')
 	class Regexp
 		def match_start(str, idx)
-			Regexp.compile('\A'+source).match(str[idx..-1])
+			Regexp.compile('\A(?:'+source+')').match(str[idx..-1])
 		end
 	end
 end

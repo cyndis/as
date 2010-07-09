@@ -160,7 +160,7 @@ class AS::Parser
 	def parse_register(s)
 		if (m = s.scan_str(REGISTER_REGEXP))
 			RegisterArgNode.new(s) { |n|
-				n.name = m[0]
+				n.name = m
 			}
 		end
 	end
