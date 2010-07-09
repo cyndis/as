@@ -1,0 +1,184 @@
+require 'str_scanner'
+
+module AS
+	class ParseError < StandardError
+		def initialize(message, s)
+			super(message)
+
+			@line = s.line
+			@column = s.column
+		end
+		attr_reader :line, :column
+	end
+end
+
+class AS::Parser
+	def initialize(str)
+		scanner = AS::Scanner.new(str)
+
+		@ast = parse_toplevel scanner
+	end
+	attr_reader :ast
+
+	def self.parse(str)
+		new(str).ast
+	end
+
+	class Node
+		def initialize(s)
+			@line = s.prev_line
+			@column = s.prev_column
+
+			yield self if block_given?
+		end
+		attr_reader :line, :column
+	end
+
+	class ToplevelNode < Node
+		attr_accessor :children
+	end
+	def parse_toplevel(s)
+		node = ToplevelNode.new(s)
+		node.children = []
+		while (not s.eos?)
+			node.children << parse(s)
+		end
+		node
+	end
+
+	def parse(s)
+		s.scan /\s*/
+		node = nil
+		%w(comment directive label instruction).each { |em|
+			if (node = send('parse_'+em, s))
+				break
+			end
+		}
+		raise AS::ParseError.new('expected element but none found') unless node
+		s.scan /\s*/
+		node
+	end
+
+	class CommentNode < Node; end
+	def parse_comment(s)
+		if (s.scan(/;.*?$/))
+			CommentNode.new(s)
+		end
+	end
+
+	class DirectiveNode < Node
+		attr_accessor :name, :value
+	end
+	def parse_directive(s)
+		if (m = s.scan(/\.(\w+)(?:\s+(.+)\s*?$)/))
+			DirectiveNode.new(s) { |n|
+				n.name = m[0]
+				n.value = m[1]
+			}
+		end
+	end
+
+	class LabelNode < Node
+		attr_accessor :name
+	end
+	def parse_label(s)
+		if (m = s.scan(/(\w+):/))
+			LabelNode.new(s) { |n|
+				n.name = m[0]
+			}
+		end
+	end
+
+	class InstructionNode < Node
+		attr_accessor :opcode, :args
+	end
+	def parse_instruction(s)
+		if (m = s.scan(/(\w+)/))
+			node = InstructionNode.new(s) { |n|
+				n.opcode = m[0]
+				n.args = []
+			}
+			if (not s.scan(/\s*($|;)/))
+				loop {
+					arg = parse_arg(s)
+					if (shift = parse_shift(s))
+						arg.shift = shift
+					end
+					node.args << arg
+					break if not s.scan(/\s*,/)
+				}
+			end
+			node
+		end
+	end
+
+	class ArgNode < Node
+		attr_accessor :shift
+	end
+	def parse_arg(s)
+		s.scan /\s*/
+		node = nil
+		%w(register num_literal label_ref).each { |em|
+			if (node = send('parse_'+em, s))
+				break
+			end
+		}
+		raise AS::ParseError.new('expected argument but none found', s) unless node
+
+		s.scan /\s*/
+		node
+	end
+
+	class ShiftNode < Node
+		attr_accessor :type, :arg
+	end
+	def parse_shift(s)
+		if (m = s.scan(/(lsl|lsr|asr|ror|rrx)\s+/i))
+			if (arg = parse_arg(s))
+				ShiftNode.new(s) { |n|
+					n.type = m[0].downcase
+					n.arg = arg
+				}
+			else
+				nil
+			end
+		end
+	end
+
+	class RegisterArgNode < ArgNode
+		attr_accessor :name
+	end
+	def parse_register(s)
+		if (m = s.scan(/([a-z0-9]+)/))
+			RegisterArgNode.new(s) { |n|
+				n.name = m[0]
+			}
+		end
+	end
+
+	class NumLiteralArgNode < ArgNode
+		attr_accessor :value
+	end
+	def parse_num_literal(s)
+		if (m = s.scan(/#(\d+)/))
+			NumLiteralArgNode.new(s) { |n|
+				n.value = m[0].to_i
+			}
+		end
+	end
+
+	class LabelRefArgNode < ArgNode
+		attr_accessor :label
+	end
+	def parse_label_ref(s)
+		if (m = s.scan(/:(\w+)/))
+			LabelRefArgNode.new(s) { |n|
+				n.label = m[0]
+			}
+		end
+	end
+end
+
+if (__FILE__ == $0)
+	p AS::Parser.parse ARGV[0]
+end
