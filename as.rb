@@ -106,8 +106,21 @@ class AS::CommandLine
 
 		writer = AS::ObjectWriter.new(ELF::TARGET_ARM)
 		writer.set_text data.string
+
+		reloc_name_ref = {}
+
 		symbols.each { |symbol|
-			writer.add_symbol symbol[:name], symbol[:label].address, symbol[:linkage]
+			label = symbol[:label]
+			if (label.extern?)
+				reloc_name_ref[label] = symbol[:name]
+				writer.add_reloc_symbol symbol[:name]
+			else
+				writer.add_symbol symbol[:name], symbol[:label].address, symbol[:linkage]
+			end
+		}
+
+		asm.relocations.each { |reloc|
+			writer.add_reloc reloc.position, reloc_name_ref[reloc.label], reloc.type
 		}
 
 		begin

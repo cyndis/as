@@ -22,10 +22,13 @@ end
 class AS::LabelObject
 	def initialize
 		@address = nil
+		@extern = false
 	end
 	attr_writer :address
 
 	def address
+		return 0 if extern?
+
 		if (@address.nil?)
 			raise 'Tried to use label object that has not been set'
 		end
@@ -34,6 +37,14 @@ class AS::LabelObject
 
 	def assemble(io, as)
 		self.address = io.tell
+	end
+
+	def extern?
+		@extern
+	end
+
+	def extern!
+		@extern = true
 	end
 end
 
@@ -47,15 +58,31 @@ class AS::DataObject
 	end
 end
 
+class AS::Relocation
+	def initialize(pos, label, type, handler)
+		@position = pos
+		@label = label
+		@type = type
+		@handler = handler
+	end
+	attr_reader :position, :label, :type, :handler
+end
+
 class AS::Assembler
 	def initialize
 		@objects = []
 		@label_objects = []
 		@label_callbacks = []
+		@relocations = []
 	end
+	attr_reader :relocations
 
 	def add_object(obj)
 		@objects << obj
+	end
+
+	def add_relocation(*args)
+		@relocations << AS::Relocation.new(*args)
 	end
 
 	def register_label_callback(label, io_pos, &block)
@@ -67,10 +94,14 @@ class AS::Assembler
 			obj.assemble io, self
 		}
 
-		@label_callbacks.each { |data|
-			label, io_pos, block = *data
-			io.seek io_pos
-			block.call io, label.address
+		@relocations.delete_if { |reloc|
+			io.seek reloc.position
+			if (reloc.label.extern?)
+				reloc.handler.call(io, io.tell, reloc.type)
+			else
+				reloc.handler.call(io, reloc.label.address, reloc.type)
+			end
+			not reloc.label.extern?
 		}
 	end
 end
@@ -80,7 +111,6 @@ class AS::AstAssembler
 		@asm_arch = asm_arch
 
 		@symbols = {}
-		@pending_linkage = {}
 
 		@asm = AS::Assembler.new
 	end
@@ -93,17 +123,17 @@ class AS::AstAssembler
 				@asm.add_object @asm_arch::Instruction.new(cmd, self)
 			elsif (cmd.is_a?(AS::Parser::DirectiveNode))
 				if (cmd.name == 'global')
-					symbol = @symbols[cmd.value]
-					if (symbol)
-						symbol[:linkage] = ELF::STB_GLOBAL
-					else
-						@pending_linkage[cmd.value] = [ELF::STB_GLOBAL, cmd]
-					end
+					symbol_for_label(cmd.value)[:linkage] = ELF::STB_GLOBAL
+				elsif (cmd.name == 'extern')
+					object_for_label(cmd.value).extern!
 				elsif (cmd.name == "hexdata")
 					bytes = cmd.value.strip.split(/\s+/).map { |hex|
 						hex.to_i(16)
 					}.pack('C*')
 					@asm.add_object AS::DataObject.new(bytes)
+				elsif (cmd.name == "asciz")
+					str = eval(cmd.value) + "\x00"
+					@asm.add_object AS::DataObject.new(str)
 				else
 					raise AS::AssemblyError.new('unknown directive', cmd)
 				end
@@ -111,28 +141,27 @@ class AS::AstAssembler
 		}
 	end
 
-	def object_for_label(name)
+	def symbol_for_label(name)
 		if (not @symbols[name])
 			@symbols[name] = {:label => AS::LabelObject.new, :linkage => ELF::STB_LOCAL, :name => name}
-			if (linkage = @pending_linkage[name])
-				@symbols[name][:linkage] = linkage[0]
-				@pending_linkage.delete name
-			end
 		end
-		@symbols[name][:label]
+		@symbols[name]
+	end
+
+	def object_for_label(name)
+		symbol_for_label(name)[:label]
 	end
 
 	def assemble(io)
-		if (not @pending_linkage.empty?)
-			first = @pending_linkage.first
-			raise AS::AssemblyError.new('cannot change linkage of unknown label', first[1])
-		end
-
 		@asm.assemble io
 	end
 
 	def symbols
 		@symbols.values
+	end
+
+	def relocations
+		@asm.relocations
 	end
 end
 

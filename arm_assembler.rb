@@ -1,4 +1,5 @@
 module AS::ARM
+	R_ARM_PC24 = 0x01
 end
 
 module AS::ARM::InstructionTools
@@ -20,6 +21,19 @@ module AS::ARM::InstructionTools
 		end
 
 		ref
+	end
+end
+
+module AS::ARM
+	def self.write_resolved_relocation(io, addr, type)
+		case type
+		when R_ARM_PC24
+			diff = addr - io.tell - 8
+			packed = [diff >> 2].pack('l')
+			io << packed[0,3]
+		else
+			raise 'unknown relocation type'
+		end
 	end
 end
 
@@ -83,6 +97,9 @@ class AS::ARM::Instruction
 		:ge => 0b1010, :gt => 0b1100,
 		:vs => 0b0110
 	}
+
+	RelocHandler = AS::ARM.method(:write_resolved_relocation)
+
 	def assemble(io, as)
 		s = @s ? 1 : 0
 		case opcode
@@ -117,13 +134,7 @@ class AS::ARM::Instruction
 				io << packed[0,3]
 			elsif (arg.is_a?(AS::LabelObject) or arg.is_a?(AS::Parser::LabelRefArgNode))
 				arg = @ast_asm.object_for_label(arg.label) if arg.is_a?(AS::Parser::LabelRefArgNode)
-				as.register_label_callback(arg, io.tell) { |io, reloc_pos|
-					# subtract 8 because of pipeline
-					diff = reloc_pos - io.tell - 8
-					packed = [diff >> 2].pack('l')
-					# TODO see prev. todo
-					io << packed[0,3]
-				}
+				as.add_relocation(io.tell, arg, AS::ARM::R_ARM_PC24, RelocHandler)
 				io << "\x00\x00\x00"
 			end
 			io.write_uint8 OPCODES[opcode] | (COND_BITS[@cond] << 4)

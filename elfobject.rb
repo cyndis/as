@@ -167,6 +167,15 @@ class ELF::SymbolTableSection < ELF::Section
 		end
 	end
 
+	def index_for_name(name)
+		@symbols.each_with_index { |sym, idx|
+			if (sym[0] == name)
+				return idx
+			end
+		}
+		nil
+	end
+
 	def type
 		ELF::SHT_SYMTAB
 	end
@@ -205,7 +214,52 @@ class ELF::SymbolTableSection < ELF::Section
 			io.write_uint32 0
 			io.write_uint8((sym[3] << 4) + 0)
 			io.write_uint8 0
-			io.write_uint16 sym[2].index
+			if (sym[2])
+				io.write_uint16 sym[2].index
+			else
+				# undefined symbol
+				io.write_uint16 0
+			end
+		}
+	end
+end
+
+class ELF::RelocationTableSection < ELF::Section
+	def initialize(name, symtab, text_section)
+		super(name)
+
+		@symtab = symtab
+		@text_section = text_section
+
+		@relocs = []
+	end
+
+	def add_reloc(offset, name, type)
+		@relocs << [offset, name, type]
+	end
+
+	def type
+		ELF::SHT_REL
+	end
+
+	def ent_size
+		8
+	end
+
+	def link
+		@symtab.index
+	end
+
+	def info
+		@text_section.index
+	end
+
+	def write(io)
+		@relocs.each { |reloc|
+			name_idx = @symtab.index_for_name(reloc[1])
+			io.write_uint32 reloc[0]
+			# +1 because entry number 0 is und
+			io.write_uint32 reloc[2] | ((name_idx+1) << 8)
 		}
 	end
 end
