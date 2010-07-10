@@ -20,14 +20,20 @@ class Numeric
 end
 
 class AS::LabelObject
-	def initialize(name)
-		@name = name
-		@linkage = ELF::STB_LOCAL
+	def initialize
+		@address = nil
 	end
-	attr_accessor :name, :linkage
+	attr_writer :address
+
+	def address
+		if (@address.nil?)
+			raise 'Tried to use label object that has not been set'
+		end
+		@address
+	end
 
 	def assemble(io, as)
-		as.add_symbol self, io.tell
+		self.address = io.tell
 	end
 end
 
@@ -42,48 +48,62 @@ class AS::DataObject
 end
 
 class AS::Assembler
-	def initialize(asm_arch)
-		@asm_arch = asm_arch
-
+	def initialize
 		@objects = []
-
-		@label_linkage = {}
-		@label_objects = {}
+		@label_objects = []
 		@label_callbacks = []
-
-		@symbols = {}
 	end
 
 	def add_object(obj)
 		@objects << obj
 	end
 
-	def add_symbol(symbol, addr)
-		@symbols[symbol] = addr
+	def register_label_callback(label, io_pos, &block)
+		@label_callbacks << [label, io_pos, block]
+	end
+
+	def assemble(io)
+		@objects.each { |obj|
+			obj.assemble io, self
+		}
+
+		@label_callbacks.each { |data|
+			label, io_pos, block = *data
+			io.seek io_pos
+			block.call io, label.address
+		}
+	end
+end
+
+class AS::AstAssembler
+	def initialize(asm_arch)
+		@asm_arch = asm_arch
+
+		@symbols = {}
+		@pending_linkage = {}
+
+		@asm = AS::Assembler.new
 	end
 
 	def load_ast(ast)
 		ast.children.each { |cmd|
 			if (cmd.is_a?(AS::Parser::LabelNode))
-				add_object label = AS::LabelObject.new(cmd.name)
-				@label_objects[cmd.name] = label
+				@asm.add_object object_for_label(cmd.name)
 			elsif (cmd.is_a?(AS::Parser::InstructionNode))
-				add_object @asm_arch::Instruction.new(cmd)
+				@asm.add_object @asm_arch::Instruction.new(cmd, self)
 			elsif (cmd.is_a?(AS::Parser::DirectiveNode))
 				if (cmd.name == 'global')
-					if (not @label_linkage[cmd.value])
-						@label_linkage[cmd.value] = [ELF::STB_GLOBAL, cmd]
+					symbol = @symbols[cmd.value]
+					if (symbol)
+						symbol[:linkage] = ELF::STB_GLOBAL
 					else
-						raise AS::AssemblyError.new(
-							'cannot change already specified linkage of section',
-							cmd
-						)
+						@pending_linkage[cmd.value] = [ELF::STB_GLOBAL, cmd]
 					end
 				elsif (cmd.name == "hexdata")
 					bytes = cmd.value.strip.split(/\s+/).map { |hex|
 						hex.to_i(16)
 					}.pack('C*')
-					add_object AS::DataObject.new(bytes)
+					@asm.add_object AS::DataObject.new(bytes)
 				else
 					raise AS::AssemblyError.new('unknown directive', cmd)
 				end
@@ -91,38 +111,28 @@ class AS::Assembler
 		}
 	end
 
-	def register_label_callback(label, io_pos, node, &block)
-		@label_callbacks << [label, io_pos, block, node]
+	def object_for_label(name)
+		if (not @symbols[name])
+			@symbols[name] = {:label => AS::LabelObject.new, :linkage => ELF::STB_LOCAL, :name => name}
+			if (linkage = @pending_linkage[name])
+				@symbols[name][:linkage] = linkage[0]
+				@pending_linkage.delete name
+			end
+		end
+		@symbols[name][:label]
 	end
 
 	def assemble(io)
-		@label_linkage.each_pair { |name, data|
-			linkage, node = *data
-			if (label = @label_objects[name])
-				label.linkage = linkage
-			else
-				raise AS::AssemblyError.new('cannot change linkage of undefined section', node)
-			end
-		}
+		if (not @pending_linkage.empty?)
+			first = @pending_linkage.first
+			raise AS::AssemblyError.new('cannot change linkage of unknown label', first[1])
+		end
 
-		@objects.each { |obj|
-			obj.assemble io, self
-		}
+		@asm.assemble io
+	end
 
-		@label_callbacks.each { |data|
-			label, io_pos, block, node = *data
-			if (label_obj = @label_objects[label])
-				symbol = @symbols[label_obj]
-				io.seek io_pos
-				block.call io, symbol
-			else
-				# trying to resolve label that is not found
-				# TODO add to elf relocation table so that
-				#      external symbols can be used
-				raise AS::AssemblyError.new('cannot resolve address of undefined symbol', node)
-			end
-		}
-
-		@symbols
+	def symbols
+		@symbols.values
 	end
 end
+

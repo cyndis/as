@@ -84,11 +84,12 @@ class AS::CommandLine
 			exit 0
 		end
 
-		asm = AS::Assembler.new(AS::ARM)
+		asm = AS::AstAssembler.new(AS::ARM)
 		begin
 			asm.load_ast ast
 			data = StringIO.new
-			addr_table = asm.assemble(data)
+			asm.assemble(data)
+			symbols = asm.symbols
 		rescue AS::AssemblyError => err
 			if (err.node)
 				puts 'as: ' + err.message
@@ -105,8 +106,8 @@ class AS::CommandLine
 
 		writer = AS::ObjectWriter.new(ELF::TARGET_ARM)
 		writer.set_text data.string
-		addr_table.each_pair { |symbol, addr|
-			writer.add_symbol symbol.name, addr, symbol.linkage
+		symbols.each { |symbol|
+			writer.add_symbol symbol[:name], symbol[:label].address, symbol[:linkage]
 		}
 
 		begin

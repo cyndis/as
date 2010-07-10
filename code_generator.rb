@@ -4,7 +4,7 @@ require 'stringio'
 
 class AS::ARMCodeGenerator
 	def initialize
-		@asm = AS::Assembler.new(AS::ARM)
+		@asm = AS::Assembler.new
 	end
 
 	def data(str)
@@ -40,6 +40,8 @@ class AS::ARMCodeGenerator
 				node.args << AS::Parser::LabelRefArgNode.new { |n|
 					n.label = arg.to_s
 				}
+			elsif (arg.is_a?(GeneratorLabel))
+				node.args << arg
 			else
 				raise 'Invalid argument for instruction'
 			end
@@ -49,29 +51,71 @@ class AS::ARMCodeGenerator
 	end
 
 	%w(adc add and bic eor orr rsb rsc sbc sub
-	   mov mvn cmn cmp teq tst
+	   mov mvn cmn cmp teq tst b bl bx
 	).each { |inst|
 		define_method(inst) { |*args|
 			instruction inst.to_sym, *args
 		}
+		define_method(inst+'s') { |*args|
+			instruction (inst+'s').to_sym, *args
+		}
+		%w(al eq ne cs mi hi cc pl ls vc
+		   lt le ge gt vs
+		).each { |cond_suffix|
+			define_method(inst+cond_suffix) { |*args|
+				instruction (inst+cond_suffix).to_sym, *args
+			}
+			define_method(inst+'s'+cond_suffix) { |*args|
+				instruction (inst+'s'+cond_suffix).to_sym, *args
+			}
+		}
 	}
 
-	def label(name)
-		@asm.add_object AS::LabelObject.new(name.to_s)
+	class GeneratorLabel < AS::LabelObject
+		def initialize(asm)
+			@asm = asm
+		end
+		def set!
+			@asm.add_object self
+		end
+	end
+
+	def label
+		GeneratorLabel.new(@asm)
 	end
 
 	def assemble
 		io = StringIO.new
-		@symbols = @asm.assemble(io)
+		@asm.assemble(io)
 		io.string
 	end
-	attr_reader :symbols
 end
 
 if (__FILE__ == $0)
 	gen = AS::ARMCodeGenerator.new
-	gen.label :_start
-	gen.mov gen.r0, 5
-	gen.data "\x1E\xFF\x2F\xE1"
-	p gen.assemble
+
+	gen.instance_eval {
+		mov r0, 5
+		loop_start = label
+		loop_start.set!
+		subs r0, r0, 1
+		bne loop_start
+		bx lr
+	}
+
+	require 'objectwriter'
+	require 'tempfile'
+	writer = AS::ObjectWriter.new(ELF::TARGET_ARM)
+	writer.set_text gen.assemble
+
+	file = Tempfile.new('arm_as_generated')
+
+	begin
+		writer.save(file.path)
+	rescue => err
+		puts 'as: cannot save output file: ' + err.message
+		exit
+	end
+
+	system("arm-objdump -dS \"#{file.path}\"")
 end

@@ -27,8 +27,9 @@ class AS::ARM::Instruction
 	include AS::ARM::InstructionTools
 
 	COND_POSTFIXES = Regexp.union(%w(eq ne cs cc mi pl vs vc hi ls ge lt gt le al)).source
-	def initialize(node)
+	def initialize(node, ast_asm = nil)
 		@node = node
+		@ast_asm = ast_asm
 		opcode = node.opcode
 		args = node.args
 
@@ -114,8 +115,9 @@ class AS::ARM::Instruction
 				# signed 32-bit, condense to 24-bit
 				# TODO add check that the value fits into 24 bits
 				io << packed[0,3]
-			elsif (arg.is_a?(AS::Parser::LabelRefArgNode))
-				as.register_label_callback(arg.label, io.tell, arg) { |io, reloc_pos|
+			elsif (arg.is_a?(AS::LabelObject) or arg.is_a?(AS::Parser::LabelRefArgNode))
+				arg = @ast_asm.object_for_label(arg.label) if arg.is_a?(AS::Parser::LabelRefArgNode)
+				as.register_label_callback(arg, io.tell) { |io, reloc_pos|
 					# subtract 8 because of pipeline
 					diff = reloc_pos - io.tell - 8
 					packed = [diff >> 2].pack('l')

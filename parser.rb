@@ -177,7 +177,7 @@ class AS::Parser
 	end
 
 	class LabelRefArgNode < ArgNode
-		attr_accessor :label
+		attr_accessor :label, :label_object
 	end
 	def parse_label_ref(s)
 		if (m = s.scan(/(\w+)/))
