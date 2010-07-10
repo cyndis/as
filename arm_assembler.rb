@@ -131,6 +131,15 @@ class AS::ARM::Instruction
 			rm = reg_ref(args[0])
 			io.write_uint32 rm | (0b1111111111110001 << 4) | (OPCODES[:bx] << 16+4) |
 			                (COND_BITS[@cond] << 16+4+8)
+		when :swi
+			arg = args[0]
+			if (arg.is_a?(AS::Parser::NumLiteralArgNode))
+				packed = [arg.value].pack('L')[0,3]
+				io << packed
+				io.write_uint8 0b1111 | (COND_BITS[@cond] << 4)
+			else
+				raise AS::AssemblyError.new('invalid parameter', arg)
+			end
 		else
 			raise AS::AssemblyError.new("unknown instruction #{opcode}", @node)
 		end

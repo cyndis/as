@@ -51,7 +51,7 @@ class AS::ARMCodeGenerator
 	end
 
 	%w(adc add and bic eor orr rsb rsc sbc sub
-	   mov mvn cmn cmp teq tst b bl bx
+	   mov mvn cmn cmp teq tst b bl bx swi
 	).each { |inst|
 		define_method(inst) { |*args|
 			instruction inst.to_sym, *args
