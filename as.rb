@@ -1,6 +1,6 @@
-require 'parser'
-require 'assembler'
-require 'objectwriter'
+require_relative 'parser'
+require_relative 'assembler'
+require_relative 'objectwriter'
 require 'optparse'
 require 'ostruct'
 
