@@ -65,6 +65,7 @@ class AS::ARM::Instruction
   attr_reader :opcode, :args
 
   OPC_DATA_PROCESSING = 0b00
+  OPC_MEMORY_ACCESS = 0b01
   # These are used differently in the
   # instruction encoders
   OPCODES = {
@@ -123,6 +124,12 @@ class AS::ARM::Instruction
       a.rn = 0
       a.rd = reg_ref(args[0])
       a.build_operand args[1]
+      a.write io
+    when :strb
+      a = BuilderB.make(OPC_MEMORY_ACCESS, 1, 0)
+      a.cond = COND_BITS[@cond]
+      a.rd = reg_ref(args[1])
+      a.build_operand args[0]
       a.write io
     when :b, :bl
       arg = args[0]
@@ -204,6 +211,56 @@ class AS::ARM::Instruction
             (s << 12+4+4) | (opcode << 12+4+4+1) |
             (i << 12+4+4+1+4) | (inst_class << 12+4+4+1+4+1) |
             (cond << 12+4+4+1+4+1+2)
+      io.write_uint32 val
+    end
+  end
+  
+  class BuilderB
+    include AS::ARM::InstructionTools
+    
+    def initialize
+      @cond = 0b1110
+      @inst_class = 0
+      @i = 0 #I flag (third bit)
+      @pre_post_index = 0 #P flag
+      @add_offset = 0 #U flag
+      @byte_access = 0 #B flag
+      @w = 0 #W flag
+      @load_store = 0 #L flag
+      @rn = 0
+      @rd = 0
+      @operand = 0
+    end
+    attr_accessor :cond, :inst_class, :i, :pre_post_index, :add_offset,
+                  :byte_access, :w, :load_store, :rn, :rd, :operand
+    
+    def self.make(inst_class, byte_access, load_store)
+      a = new
+      a.inst_class = inst_class
+      a.byte_access = byte_access
+      a.load_store = load_store
+      a
+    end
+    
+    # Build representation for target address
+    def build_operand(arg)
+      if (arg.is_a?(AS::Parser::RegisterArgNode))
+        @i = 0
+        @pre_post_index = 0
+        @w = 0
+        @rn = reg_ref(arg)
+        @operand = 0
+      else
+        raise AS::AssemblyError.new('invalid operand argument', arg)
+      end
+    end
+    
+    def write(io)
+      val = operand | (rd << 12) | (rn << 12+4) |
+            (load_store << 12+4+4) | (w << 12+4+4+1) |
+            (byte_access << 12+4+4+1+1) | (add_offset << 12+4+4+1+1+1) |
+            (pre_post_index << 12+4+4+1+1+1+1) | (i << 12+4+4+1+1+1+1+1) |
+            (inst_class << 12+4+4+1+1+1+1+1+1) | (cond << 12+4+4+1+1+1+1+1+1+2)
       io.write_uint32 val
     end
   end
