@@ -106,9 +106,6 @@ class AS::Parser
       if (not s.scan(/\s*($|;)/))
         loop {
           arg = parse_arg(s)
-          if (shift = parse_shift(s))
-            arg.shift = shift
-          end
           node.args << arg
           break if not s.scan(/\s*,/)
         }
@@ -118,7 +115,6 @@ class AS::Parser
   end
 
   class ArgNode < Node
-    attr_accessor :shift
   end
   def parse_arg(s)
     s.scan /\s*/
@@ -129,20 +125,38 @@ class AS::Parser
       end
     }
     raise AS::ParseError.new('expected argument but none found', s) unless node
+    
+    if (node2 = parse_arg_op(s))
+      node2.argument = node
+      node = node2
+    end
 
+    s.scan /\s*/
+    node
+  end
+  
+  def parse_arg_op(s)
+    s.scan /\s*/
+    node = nil
+    %w(shift).each do |em|
+      if (node = send('parse_'+em, s))
+        break
+      end
+    end
     s.scan /\s*/
     node
   end
 
   class ShiftNode < Node
-    attr_accessor :type, :arg
+    attr_accessor :type, :value, :argument
   end
   def parse_shift(s)
     if (m = s.scan(/(lsl|lsr|asr|ror|rrx)\s+/i))
-      if (arg = parse_arg(s))
+      op = m[0].downcase
+      if (op == 'rrx' or arg = parse_arg(s))
         ShiftNode.new(s) { |n|
           n.type = m[0].downcase
-          n.arg = arg
+          n.value = arg
         }
       else
         nil
