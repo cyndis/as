@@ -59,7 +59,7 @@ class AS::Parser
         break
       end
     }
-    raise AS::ParseError.new('expected element but none found') unless node
+    raise AS::ParseError.new('could not parse element', s) unless node
     s.scan /\s*/
     node
   end
