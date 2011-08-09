@@ -75,6 +75,7 @@ class AS::CommandLine
       line = code.split("\n")[err.line]
       puts line.gsub(/\s/, ' ')
       puts ' ' * (err.column-1) + '^'
+      puts '  ' + err.message
       exit 3
     end
 
@@ -92,12 +93,12 @@ class AS::CommandLine
       symbols = asm.symbols
     rescue AS::AssemblyError => err
       if (err.node)
-        puts 'as: ' + err.message
         puts 'as: assembly error on line %d, column %d' % [
           err.node.line+1, err.node.column+1]
         line = code.split("\n")[err.node.line]
         puts line.gsub(/\s/, ' ')
         puts ' ' * (err.node.column-1) + '^'
+        puts '  ' + err.message
       else
         puts 'as: ' + err.message
       end
