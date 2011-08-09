@@ -268,15 +268,20 @@ class AS::ARM::Instruction
     end
     
     # Build representation for target address
-    def build_operand(arg)
-      if (arg.is_a?(AS::Parser::RegisterArgNode))
-        @i = 0
-        @pre_post_index = 0
-        @w = 0
-        @rn = reg_ref(arg)
-        @operand = 0
+    def build_operand(arg1)
+      if (arg1.is_a?(AS::Parser::ReferenceArgNode))
+        arg = arg1.argument
+        if (arg.is_a?(AS::Parser::RegisterArgNode))
+          @i = 0
+          @pre_post_index = 0
+          @w = 0
+          @rn = reg_ref(arg)
+          @operand = 0
+        else
+          raise AS::AssemblyError.new('invalid operand argument', arg)
+        end
       else
-        raise AS::AssemblyError.new('invalid operand argument', arg)
+        raise AS::AssemblyError.new('invalid operand argument (not a reference)', arg1)
       end
     end
     
