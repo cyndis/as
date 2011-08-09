@@ -226,6 +226,30 @@ class AS::ARM::Instruction
       elsif (arg.is_a?(AS::Parser::RegisterArgNode))
         @operand = reg_ref(arg)
         @i = 0
+      elsif (arg.is_a?(AS::Parser::ShiftNode))
+        rm_ref = reg_ref(arg.argument)
+        @i = 0
+        shift_op = {'lsl' => 0b000, 'lsr' => 0b010, 'asr' => 0b100,
+                    'ror' => 0b110, 'rrx' => 0b110}[arg.type]
+        if (arg.type == 'ror' and arg.value.nil?)
+          # ror #0 == rrx
+          raise AS::AssemblyError.new('cannot rotate by zero', arg)
+        end
+        
+        arg1 = arg.value
+        if (arg1.is_a?(AS::Parser::NumLiteralArgNode))
+          if (arg1.value >= 32)
+            raise AS::AssemblyError.new('cannot shift by more than 31', arg1)
+          end
+          shift_imm = arg1.value
+        elsif (arg1.is_a?(AS::Parser::RegisterArgNode))
+          shift_op |= 0x1;
+          shift_imm = reg_ref(arg1) << 1
+        elsif (arg.type == 'rrx')
+          shift_imm = 0
+        end
+        
+        @operand = rm_ref | (shift_op << 4) | (shift_imm << 4+3)
       else
         raise AS::AssemblyError.new('invalid operand argument', arg)
       end
