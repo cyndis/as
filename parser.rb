@@ -123,7 +123,7 @@ class AS::Parser
   def parse_arg(s)
     s.scan /\s*/
     node = nil
-    %w(register num_literal label_ref).each { |em|
+    %w(reference register num_literal label_ref).each { |em|
       if (node = send('parse_'+em, s))
         break
       end
@@ -184,6 +184,20 @@ class AS::Parser
       LabelRefArgNode.new(s) { |n|
         n.label = m[0]
       }
+    end
+  end
+  
+  class ReferenceArgNode < ArgNode
+    attr_accessor :argument
+  end
+  def parse_reference(s)
+    if (m = s.scan(/\[/))
+      arg = parse_arg(s)
+      if (arg and s.scan(/\]/))
+        ReferenceArgNode.new(s) do |n|
+          n.argument = arg
+        end
+      end
     end
   end
 end
