@@ -300,16 +300,50 @@ class AS::ARM::Instruction
       a
     end
     
+    class MathReferenceArgNode < AS::Parser::ReferenceArgNode
+      attr_accessor :op, :right
+    end
+    def simplify_reference(arg)
+      node = MathReferenceArgNode.new
+      
+      if (arg.is_a?(AS::Parser::MathNode))
+        node.argument = arg.left
+        node.op = arg.op
+        node.right = arg.right
+      else
+        node.argument = arg
+      end
+      
+      node
+    end
+    
     # Build representation for target address
     def build_operand(arg1)
       if (arg1.is_a?(AS::Parser::ReferenceArgNode))
-        arg = arg1.argument
+        argr = simplify_reference(arg1.argument)
+        arg = argr.argument
         if (arg.is_a?(AS::Parser::RegisterArgNode))
           @i = 0
-          @pre_post_index = 0
+          @pre_post_index = 1
           @w = 0
           @rn = reg_ref(arg)
           @operand = 0
+          
+          if (argr.op and argr.right.is_a?(AS::Parser::NumLiteralArgNode))
+            val = argr.right.value
+            if (val < 0)
+              @add_offset = 0
+              val *= -1
+            else
+              @add_offset = 1
+            end
+            if (val.abs > 4095)
+              raise AS::AssemblyError.new('reference offset too large/small (max 4095)', argr.right)
+            end
+            @operand = val
+          elsif (argr.op)
+            raise AS::AssemblyError.new('reference offset must be an integer literal', argr.right)
+          end
         else
           raise AS::AssemblyError.new('invalid operand argument', arg)
         end

@@ -138,7 +138,7 @@ class AS::Parser
   def parse_arg_op(s)
     s.scan /\s*/
     node = nil
-    %w(shift).each do |em|
+    %w(shift math).each do |em|
       if (node = send('parse_'+em, s))
         break
       end
@@ -160,6 +160,24 @@ class AS::Parser
         }
       else
         nil
+      end
+    end
+  end
+  
+  class MathNode < Node
+    attr_accessor :left, :right, :op
+    alias_method :argument, :left
+    alias_method :argument=, :left=
+  end
+  def parse_math(s)
+    if (m = s.scan_str(/[\+\-]/))
+      if (arg1 = parse_arg(s))
+        MathNode.new(s) do |n|
+          n.right = arg1
+          n.op = m
+        end
+      else
+        raise AS::ParseError.new('expected right side for arithmetic op', s)
       end
     end
   end
