@@ -125,11 +125,17 @@ class AS::ARM::Instruction
       a.rd = reg_ref(args[0])
       a.build_operand args[1]
       a.write io
-    when :strb
-      a = BuilderB.make(OPC_MEMORY_ACCESS, 1, 0)
+    when :strb, :str
+      a = BuilderB.make(OPC_MEMORY_ACCESS, (opcode == :strb ? 1 : 0), 0)
       a.cond = COND_BITS[@cond]
       a.rd = reg_ref(args[1])
       a.build_operand args[0]
+      a.write io
+    when :ldrb, :ldr
+      a = BuilderB.make(OPC_MEMORY_ACCESS, (opcode == :ldrb ? 1 : 0), 1)
+      a.cond = COND_BITS[@cond]
+      a.rd = reg_ref(args[0])
+      a.build_operand args[1]
       a.write io
     when :b, :bl
       arg = args[0]
@@ -163,7 +169,8 @@ class AS::ARM::Instruction
     end
   end
 
-  # Builder for addressing mode 1
+  # ADDRESSING MODE 1
+  # Complete!
   class BuilderA
     include AS::ARM::InstructionTools
 
@@ -264,6 +271,8 @@ class AS::ARM::Instruction
     end
   end
   
+  # ADDRESSING MODE 2
+  # Implemented: immediate offset with offset=0
   class BuilderB
     include AS::ARM::InstructionTools
     
