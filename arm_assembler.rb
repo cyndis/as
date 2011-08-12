@@ -5,7 +5,7 @@ end
 module AS::ARM::InstructionTools
   def reg_ref(arg)
     if (not arg.is_a?(AS::Parser::RegisterArgNode))
-      raise 'Must be a register'
+      raise AS::AssemblyError.new('argument must be a register', arg)
     end
 
     ref =
