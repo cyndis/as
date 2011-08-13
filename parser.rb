@@ -75,7 +75,7 @@ class AS::Parser
     attr_accessor :name, :value
   end
   def parse_directive(s)
-    if (m = s.scan(/\.(\w+)(?:\s+(.+)\s*?$)/))
+    if (m = s.scan(/\.(\w+)(?:(?!$)\s+(.+)\s*?$)?/))
       DirectiveNode.new(s) { |n|
         n.name = m[0]
         n.value = m[1]
@@ -211,10 +211,12 @@ class AS::Parser
   class LabelRefArgNode < ArgNode
     attr_accessor :label, :label_object
   end
+  class LabelEquivAddrArgNode < LabelRefArgNode
+  end
   def parse_label_ref(s)
-    if (m = s.scan(/(\w+)/))
-      LabelRefArgNode.new(s) { |n|
-        n.label = m[0]
+    if (m = s.scan(/(=?)(\w+)/))
+      (m[0] == '=' ? LabelEquivAddrArgNode : LabelRefArgNode).new(s) { |n|
+        n.label = m[1]
       }
     end
   end

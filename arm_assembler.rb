@@ -1,5 +1,43 @@
 module AS::ARM
+  # Relocation constants
+  # Note that in this assembler, a relocation simply means any
+  # reference to a label that can only be determined at assembly time
+  # or later (as in the normal meaning)
+  
   R_ARM_PC24 = 0x01
+  R_ARM_ABS32 = 0x02
+  
+  # Unofficial (cant be used for extern relocations)
+  R_ARM_PC12 = 0xF0
+  
+  # TODO actually find the closest somehow
+  def self.closest_addrtable(as)
+    as.objects.find do |obj|
+      obj.is_a?(AS::ARM::AddrTableObject)
+    end || (raise AS::AssemblyError.new('could not find addrtable to use', nil))
+  end
+end
+
+class AS::ARM::AddrTableObject
+  def initialize
+    @table = []
+  end
+  
+  def add_label(label)
+    d = [label, AS::LabelObject.new]
+    @table << d
+    d[1]
+  end
+  
+  def assemble(io, as)
+    @table.each do |pair|
+      target_label, here_label = *pair
+      here_label.assemble io, as
+      as.add_relocation io.tell, target_label, AS::ARM::R_ARM_ABS32,
+                        AS::ARM::Instruction::RelocHandler
+      io.write_uint32 0
+    end
+  end
 end
 
 module AS::ARM::InstructionTools
@@ -31,6 +69,24 @@ module AS::ARM
       diff = addr - io.tell - 8
       packed = [diff >> 2].pack('l')
       io << packed[0,3]
+    when R_ARM_ABS32
+      packed = [addr].pack('l')
+      io << packed
+    when R_ARM_PC12
+      diff = addr - io.tell - 8
+      if (diff.abs > 2047)
+        raise AS::AssemblyError.new('offset too large for R_ARM_PC12 relocation',
+                                    nil)
+      end
+      
+      val = diff.abs
+      sign = (diff>0)?1:0
+      
+      curr = io.read_uint32
+      io.seek(-4, IO::SEEK_CUR)
+      
+      io.write_uint32 (curr & ~0b00000000100000000000111111111111) | 
+                      val | (sign << 23)
     else
       raise 'unknown relocation type'
     end
@@ -110,33 +166,33 @@ class AS::ARM::Instruction
       a.rd = reg_ref(args[0])
       a.rn = reg_ref(args[1])
       a.build_operand args[2]
-      a.write io
+      a.write io, as
     when :cmn, :cmp, :teq, :tst
       a = BuilderA.make(OPC_DATA_PROCESSING, OPCODES[opcode], 1)
       a.cond = COND_BITS[@cond]
       a.rn = reg_ref(args[0])
       a.rd = 0
       a.build_operand args[1]
-      a.write io
+      a.write io, as
     when :mov, :mvn
       a = BuilderA.make(OPC_DATA_PROCESSING, OPCODES[opcode], s)
       a.cond = COND_BITS[@cond]
       a.rn = 0
       a.rd = reg_ref(args[0])
       a.build_operand args[1]
-      a.write io
+      a.write io, as
     when :strb, :str
       a = BuilderB.make(OPC_MEMORY_ACCESS, (opcode == :strb ? 1 : 0), 0)
       a.cond = COND_BITS[@cond]
       a.rd = reg_ref(args[1])
       a.build_operand args[0]
-      a.write io
+      a.write io, as, @ast_asm
     when :ldrb, :ldr
       a = BuilderB.make(OPC_MEMORY_ACCESS, (opcode == :ldrb ? 1 : 0), 1)
       a.cond = COND_BITS[@cond]
       a.rd = reg_ref(args[0])
       a.build_operand args[1]
-      a.write io
+      a.write io, as, @ast_asm
     when :b, :bl
       arg = args[0]
       if (arg.is_a?(AS::Parser::NumLiteralArgNode))
@@ -262,7 +318,7 @@ class AS::ARM::Instruction
       end
     end
 
-    def write(io)
+    def write(io, as)
       val = operand | (rd << 12) | (rn << 12+4) |
             (s << 12+4+4) | (opcode << 12+4+4+1) |
             (i << 12+4+4+1+4) | (inst_class << 12+4+4+1+4+1) |
@@ -347,17 +403,35 @@ class AS::ARM::Instruction
         else
           raise AS::AssemblyError.new('invalid operand argument', arg)
         end
+      elsif (arg1.is_a?(AS::Parser::LabelEquivAddrArgNode))
+        @i = 0
+        @pre_post_index = 1
+        @w = 0
+        @rn = 15 # pc
+        @operand = 0
+        @use_addrtable_reloc = true
+        @addrtable_reloc_target = arg1
       else
         raise AS::AssemblyError.new('invalid operand argument (not a reference)', arg1)
       end
     end
     
-    def write(io)
+    def write(io, as, ast_asm)
       val = operand | (rd << 12) | (rn << 12+4) |
             (load_store << 12+4+4) | (w << 12+4+4+1) |
             (byte_access << 12+4+4+1+1) | (add_offset << 12+4+4+1+1+1) |
             (pre_post_index << 12+4+4+1+1+1+1) | (i << 12+4+4+1+1+1+1+1) |
             (inst_class << 12+4+4+1+1+1+1+1+1) | (cond << 12+4+4+1+1+1+1+1+1+2)
+      if (@use_addrtable_reloc)
+        closest_addrtable = AS::ARM.closest_addrtable(as)
+        if (@addrtable_reloc_target.is_a?(AS::Parser::LabelRefArgNode))
+          @addrtable_reloc_target = ast_asm.object_for_label(
+                                              @addrtable_reloc_target.label)
+        end
+        ref_label = closest_addrtable.add_label(@addrtable_reloc_target)
+        as.add_relocation io.tell, ref_label, AS::ARM::R_ARM_PC12,
+                          AS::ARM::Instruction::RelocHandler
+      end
       io.write_uint32 val
     end
   end

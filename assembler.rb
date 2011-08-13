@@ -75,7 +75,7 @@ class AS::Assembler
     @label_callbacks = []
     @relocations = []
   end
-  attr_reader :relocations
+  attr_reader :relocations, :objects
 
   def add_object(obj)
     @objects << obj
@@ -94,7 +94,7 @@ class AS::Assembler
       obj.assemble io, self
     }
 
-    @relocations.delete_if { |reloc|
+    @relocations.delete_if do |reloc|
       io.seek reloc.position
       if (reloc.label.extern?)
         reloc.handler.call(io, io.tell, reloc.type)
@@ -102,7 +102,7 @@ class AS::Assembler
         reloc.handler.call(io, reloc.label.address, reloc.type)
       end
       not reloc.label.extern?
-    }
+    end
   end
 end
 
@@ -114,9 +114,13 @@ class AS::AstAssembler
 
     @asm = AS::Assembler.new
   end
+  
+  def assembler
+    @asm
+  end
 
   def load_ast(ast)
-    ast.children.each { |cmd|
+    ast.children.each do |cmd|
       if (cmd.is_a?(AS::Parser::LabelNode))
         @asm.add_object object_for_label(cmd.name)
       elsif (cmd.is_a?(AS::Parser::InstructionNode))
@@ -126,7 +130,7 @@ class AS::AstAssembler
           symbol_for_label(cmd.value)[:linkage] = ELF::STB_GLOBAL
         elsif (cmd.name == 'extern')
           object_for_label(cmd.value).extern!
-        elsif (cmd.name == "hexdata")
+        elsif (cmd.name == 'hexdata')
           bytes = cmd.value.strip.split(/\s+/).map { |hex|
             hex.to_i(16)
           }.pack('C*')
@@ -134,11 +138,13 @@ class AS::AstAssembler
         elsif (cmd.name == "asciz")
           str = eval(cmd.value) + "\x00"
           @asm.add_object AS::DataObject.new(str)
+        elsif (defined?(AS::ARM) and cmd.name == 'addrtable')
+          @asm.add_object AS::ARM::AddrTableObject.new
         else
           raise AS::AssemblyError.new('unknown directive', cmd)
         end
       end
-    }
+    end
   end
 
   def symbol_for_label(name)
