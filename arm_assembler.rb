@@ -186,13 +186,13 @@ class AS::ARM::Instruction
       a.cond = COND_BITS[@cond]
       a.rd = reg_ref(args[1])
       a.build_operand args[0]
-      a.write io, as, @ast_asm
+      a.write io, as, @ast_asm, self
     when :ldrb, :ldr
       a = BuilderB.make(OPC_MEMORY_ACCESS, (opcode == :ldrb ? 1 : 0), 1)
       a.cond = COND_BITS[@cond]
       a.rd = reg_ref(args[0])
       a.build_operand args[1]
-      a.write io, as, @ast_asm
+      a.write io, as, @ast_asm, self
     when :b, :bl
       arg = args[0]
       if (arg.is_a?(AS::Parser::NumLiteralArgNode))
@@ -202,7 +202,7 @@ class AS::ARM::Instruction
         # TODO add check that the value fits into 24 bits
         io << packed[0,3]
       elsif (arg.is_a?(AS::LabelObject) or arg.is_a?(AS::Parser::LabelRefArgNode))
-        arg = @ast_asm.object_for_label(arg.label) if arg.is_a?(AS::Parser::LabelRefArgNode)
+        arg = @ast_asm.object_for_label(arg.label, self) if arg.is_a?(AS::Parser::LabelRefArgNode)
         as.add_relocation(io.tell, arg, AS::ARM::R_ARM_PC24, RelocHandler)
         io << "\x00\x00\x00"
       end
@@ -416,7 +416,7 @@ class AS::ARM::Instruction
       end
     end
     
-    def write(io, as, ast_asm)
+    def write(io, as, ast_asm, inst)
       val = operand | (rd << 12) | (rn << 12+4) |
             (load_store << 12+4+4) | (w << 12+4+4+1) |
             (byte_access << 12+4+4+1+1) | (add_offset << 12+4+4+1+1+1) |
@@ -426,7 +426,7 @@ class AS::ARM::Instruction
         closest_addrtable = AS::ARM.closest_addrtable(as)
         if (@addrtable_reloc_target.is_a?(AS::Parser::LabelRefArgNode))
           @addrtable_reloc_target = ast_asm.object_for_label(
-                                              @addrtable_reloc_target.label)
+            @addrtable_reloc_target.label, inst)
         end
         ref_label = closest_addrtable.add_label(@addrtable_reloc_target)
         as.add_relocation io.tell, ref_label, AS::ARM::R_ARM_PC12,

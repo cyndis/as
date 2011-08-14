@@ -90,9 +90,9 @@ class AS::Assembler
   end
 
   def assemble(io)
-    @objects.each { |obj|
+    @objects.each do |obj|
       obj.assemble io, self
-    }
+    end
 
     @relocations.delete_if do |reloc|
       io.seek reloc.position
@@ -111,6 +111,7 @@ class AS::AstAssembler
     @asm_arch = asm_arch
 
     @symbols = {}
+    @inst_label_context = {}
 
     @asm = AS::Assembler.new
   end
@@ -120,20 +121,27 @@ class AS::AstAssembler
   end
 
   def load_ast(ast)
+    label_breadcrumb = []
     ast.children.each do |cmd|
       if (cmd.is_a?(AS::Parser::LabelNode))
-        @asm.add_object object_for_label(cmd.name)
+        m = /^\/+/.match(cmd.name)
+        count = m ? m[0].length : 0
+        label_breadcrumb = label_breadcrumb[0,count]
+        label_breadcrumb << cmd.name[count..-1]
+        @asm.add_object object_for_label(label_breadcrumb.join('/'))
       elsif (cmd.is_a?(AS::Parser::InstructionNode))
-        @asm.add_object @asm_arch::Instruction.new(cmd, self)
+        inst = @asm_arch::Instruction.new(cmd, self)
+        @asm.add_object inst
+        @inst_label_context[inst] = label_breadcrumb
       elsif (cmd.is_a?(AS::Parser::DirectiveNode))
         if (cmd.name == 'global')
           symbol_for_label(cmd.value)[:linkage] = ELF::STB_GLOBAL
         elsif (cmd.name == 'extern')
           object_for_label(cmd.value).extern!
         elsif (cmd.name == 'hexdata')
-          bytes = cmd.value.strip.split(/\s+/).map { |hex|
+          bytes = cmd.value.strip.split(/\s+/).map do |hex|
             hex.to_i(16)
-          }.pack('C*')
+          end.pack('C*')
           @asm.add_object AS::DataObject.new(bytes)
         elsif (cmd.name == "asciz")
           str = eval(cmd.value) + "\x00"
@@ -147,15 +155,27 @@ class AS::AstAssembler
     end
   end
 
-  def symbol_for_label(name)
-    if (not @symbols[name])
-      @symbols[name] = {:label => AS::LabelObject.new, :linkage => ELF::STB_LOCAL, :name => name}
+  # instruction is user for label context
+  def symbol_for_label(name, instruction=nil)
+    if (instruction)
+      context = @inst_label_context[instruction]
+      m = /^(\/*)(.+)/.match(name)
+      breadcrumb = context[0,m[1].length]
+      breadcrumb << m[2]
+      p breadcrumb
+      qual_name = breadcrumb.join('/')
+    else
+      qual_name = name
     end
-    @symbols[name]
+    
+    if (not @symbols[qual_name])
+      @symbols[name] = {:label => AS::LabelObject.new, :linkage => ELF::STB_LOCAL, :name => qual_name}
+    end
+    @symbols[qual_name]
   end
 
-  def object_for_label(name)
-    symbol_for_label(name)[:label]
+  def object_for_label(name, instruction=nil)
+    symbol_for_label(name, instruction)[:label]
   end
 
   def assemble(io)

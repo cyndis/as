@@ -87,7 +87,7 @@ class AS::Parser
     attr_accessor :name
   end
   def parse_label(s)
-    if (m = s.scan(/(\w+):/))
+    if (m = s.scan(/(\/*\w+):/))
       LabelNode.new(s) { |n|
         n.name = m[0]
       }
@@ -214,7 +214,7 @@ class AS::Parser
   class LabelEquivAddrArgNode < LabelRefArgNode
   end
   def parse_label_ref(s)
-    if (m = s.scan(/(=?)(\w+)/))
+    if (m = s.scan(/(=?)(\/*\w+)/))
       (m[0] == '=' ? LabelEquivAddrArgNode : LabelRefArgNode).new(s) { |n|
         n.label = m[1]
       }
