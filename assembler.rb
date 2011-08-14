@@ -162,7 +162,6 @@ class AS::AstAssembler
       m = /^(\/*)(.+)/.match(name)
       breadcrumb = context[0,m[1].length]
       breadcrumb << m[2]
-      p breadcrumb
       qual_name = breadcrumb.join('/')
     else
       qual_name = name
