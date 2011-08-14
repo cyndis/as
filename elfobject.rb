@@ -146,6 +146,10 @@ class ELF::TextSection < ELF::Section
   def flags
     ELF::SHF_ALLOC | ELF::SHF_EXECINSTR
   end
+  
+  def alignment
+    4
+  end
 end
 
 class ELF::SymbolTableSection < ELF::Section
