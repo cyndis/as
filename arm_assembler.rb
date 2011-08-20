@@ -21,11 +21,19 @@ end
 class AS::ARM::AddrTableObject
   def initialize
     @table = []
+    @const = []
   end
   
+  # TODO don't create new entry if there's already an entry for the same label/const
   def add_label(label)
     d = [label, AS::LabelObject.new]
     @table << d
+    d[1]
+  end
+  
+  def add_const(const)
+    d = [const, AS::LabelObject.new]
+    @const << d
     d[1]
   end
   
@@ -36,6 +44,11 @@ class AS::ARM::AddrTableObject
       as.add_relocation io.tell, target_label, AS::ARM::R_ARM_ABS32,
                         AS::ARM::Instruction::RelocHandler
       io.write_uint32 0
+    end
+    @const.each do |pair|
+      const, here_label = *pair
+      here_label.assemble io, as
+      io.write_uint32 const
     end
   end
 end
@@ -403,7 +416,7 @@ class AS::ARM::Instruction
         else
           raise AS::AssemblyError.new('invalid operand argument', arg)
         end
-      elsif (arg1.is_a?(AS::Parser::LabelEquivAddrArgNode))
+      elsif (arg1.is_a?(AS::Parser::LabelEquivAddrArgNode) or arg1.is_a?(AS::Parser::NumEquivAddrArgNode))
         @i = 0
         @pre_post_index = 1
         @w = 0

@@ -196,14 +196,42 @@ class AS::Parser
       }
     end
   end
+  
+  class RegisterListArgNode < ArgNode
+    attr_accessor :registers
+  end
+  def parse_register_list(s)
+    if (m = s.scan(/\{/))
+      node = RegisterListArgNode.new(s) do |n|
+        n.registers = []
+      end
+      loop do
+        s.scan /\s*/
+        reg = parse_register(s)
+        if (not reg)
+          return nil
+        end
+        s.scan /\s*,?/
+        
+        node.registers << reg
+        
+        if (s.scan(/\}/))
+          break
+        end
+      end
+      node
+    end
+  end
 
   class NumLiteralArgNode < ArgNode
     attr_accessor :value
   end
+  class NumEquivAddrArgNode < NumLiteralArgNode
+  end
   def parse_num_literal(s)
-    if (m = s.scan(/#(-?(?:0x)?[0-9A-Fa-f]+)/))
-      NumLiteralArgNode.new(s) { |n|
-        n.value = Integer(m[0])
+    if (m = s.scan(/(=?)#(-?(?:0x)?[0-9A-Fa-f]+)/))
+      (m[0] == '=' ? NumEquivAddrArgNode : NumLiteralArgNode).new(s) { |n|
+        n.value = Integer(m[1])
       }
     end
   end
