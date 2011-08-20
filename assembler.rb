@@ -13,7 +13,6 @@ module AS
 end
 
 require_relative 'parser'
-require_relative 'arm_assembler'
 require_relative 'elfobject'
 
 class Numeric

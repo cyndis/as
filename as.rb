@@ -22,7 +22,7 @@ class AS::CommandLine
       opts.on("-t", "--target TARGET",
               "Specify target architecture (arm)") { |o|
         options.target = o.to_sym
-        if (not [:arm].include?(options.target))
+        if (not [:arm, :ttk91].include?(options.target))
           puts opts
           exit
         end
@@ -84,8 +84,19 @@ class AS::CommandLine
       pp ast
       exit 0
     end
+    
+    case options.target
+    when :arm
+      require_relative 'arm_assembler.rb'
+      as_module = AS::ARM
+      as_target = ELF::TARGET_ARM
+    when :ttk91
+      require_relative 'ttk91_assembler.rb'
+      as_module = AS::TTK91
+      as_target = ELF::TARGET_TTK91
+    end
 
-    asm = AS::AstAssembler.new(AS::ARM)
+    asm = AS::AstAssembler.new(as_module)
     begin
       asm.load_ast ast
       data = StringIO.new
@@ -105,7 +116,7 @@ class AS::CommandLine
       exit 4
     end
 
-    writer = AS::ObjectWriter.new(ELF::TARGET_ARM)
+    writer = AS::ObjectWriter.new(as_target)
     writer.set_text data.string
 
     reloc_name_ref = {}
