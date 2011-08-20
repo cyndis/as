@@ -135,6 +135,7 @@ class AS::ARM::Instruction
 
   OPC_DATA_PROCESSING = 0b00
   OPC_MEMORY_ACCESS = 0b01
+  OPC_STACK = 0b10
   # These are used differently in the
   # instruction encoders
   OPCODES = {
@@ -206,6 +207,18 @@ class AS::ARM::Instruction
       a.rd = reg_ref(args[0])
       a.build_operand args[1]
       a.write io, as, @ast_asm, self
+    when :push, :pop
+      # downward growing, decrement before memory access
+      # official ARM style stack as used by gas
+      if (opcode == :push)
+        a = BuilderD.make(1,0,1,0) 
+      else
+        a = BuilderD.make(0,1,1,1)
+      end
+      a.cond = COND_BITS[@cond]
+      a.rn = 13 # sp
+      a.build_operand args[0]
+      a.write io, as
     when :b, :bl
       arg = args[0]
       if (arg.is_a?(AS::Parser::NumLiteralArgNode))
@@ -437,14 +450,64 @@ class AS::ARM::Instruction
             (inst_class << 12+4+4+1+1+1+1+1+1) | (cond << 12+4+4+1+1+1+1+1+1+2)
       if (@use_addrtable_reloc)
         closest_addrtable = AS::ARM.closest_addrtable(as)
-        if (@addrtable_reloc_target.is_a?(AS::Parser::LabelRefArgNode))
-          @addrtable_reloc_target = ast_asm.object_for_label(
-            @addrtable_reloc_target.label, inst)
+        if (@addrtable_reloc_target.is_a?(AS::Parser::LabelEquivAddrArgNode))
+          obj = ast_asm.object_for_label(@addrtable_reloc_target.label, inst)
+          ref_label = closest_addrtable.add_label(obj)
+        elsif (@addrtable_reloc_target.is_a?(AS::Parser::NumEquivAddrArgNode))
+          ref_label = closest_addrtable.add_const(@addrtable_reloc_target.value)
         end
-        ref_label = closest_addrtable.add_label(@addrtable_reloc_target)
         as.add_relocation io.tell, ref_label, AS::ARM::R_ARM_PC12,
                           AS::ARM::Instruction::RelocHandler
       end
+      io.write_uint32 val
+    end
+  end
+  
+  # ADDRESSING MODE 4
+  class BuilderD
+    include AS::ARM::InstructionTools
+
+    def initialize
+      @cond = 0b1110
+      @inst_class = AS::ARM::Instruction::OPC_STACK
+      @pre_post_index = 0
+      @up_down = 0
+      @s = 0
+      @write_base = 0
+      @store_load = 0
+      @rn = 0
+      @operand = 0
+    end
+    attr_accessor :cond, :inst_class, :pre_post_index, :up_down,
+                  :s, :write_base, :store_load, :rn, :operand
+
+    def self.make(pre_post, up_down, write, store_load)
+      a = new
+      a.pre_post_index = pre_post
+      a.up_down = up_down
+      a.write_base = write
+      a.store_load = store_load
+      a
+    end
+
+    # Build representation for source value
+    def build_operand(arg)
+      if (arg.is_a?(AS::Parser::RegisterListArgNode))
+        @operand = 0
+        arg.registers.each do |reg_node|
+          reg = reg_ref(reg_node)
+          @operand |= (1 << reg)
+        end
+      else
+        raise AS::AssemblyError.new('invalid operand argument', arg)
+      end
+    end
+
+    def write(io, as)
+      val = operand | (rn << 16) | (store_load << 16+4) | 
+            (write_base << 16+4+1) | (s << 16+4+1+1) | (up_down << 16+4+1+1+1) |
+            (pre_post_index << 16+4+1+1+1+1) | (inst_class << 16+4+1+1+1+1+2) |
+            (cond << 16+4+1+1+1+1+2+2)
       io.write_uint32 val
     end
   end

@@ -119,7 +119,7 @@ class AS::Parser
   def parse_arg(s)
     s.scan /\s*/
     node = nil
-    %w(reference register num_literal label_ref).each { |em|
+    %w(reference register register_list num_literal label_ref).each { |em|
       if (node = send('parse_'+em, s))
         break
       end
