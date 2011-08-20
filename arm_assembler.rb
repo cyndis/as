@@ -244,7 +244,7 @@ class AS::ARM::Instruction
         io << packed
         io.write_uint8 0b1111 | (COND_BITS[@cond] << 4)
       else
-        raise AS::AssemblyError.new('invalid parameter', arg)
+        raise AS::AssemblyError.new(AS::ERRSTR_INVALID_ARG, arg)
       end
     else
       raise AS::AssemblyError.new("unknown instruction #{opcode}", @node)
@@ -310,7 +310,7 @@ class AS::ARM::Instruction
           @operand = op_with_rot
           @i = 1
         else
-          raise AS::AssemblyError.new('cannot fit numeric literal argument in operand', arg)
+          raise AS::AssemblyError.new(AS::ERRSTR_NUMERIC_TOO_LARGE, arg)
         end
       elsif (arg.is_a?(AS::Parser::RegisterArgNode))
         @operand = reg_ref(arg)
@@ -340,7 +340,7 @@ class AS::ARM::Instruction
         
         @operand = rm_ref | (shift_op << 4) | (shift_imm << 4+3)
       else
-        raise AS::AssemblyError.new('invalid operand argument', arg)
+        raise AS::AssemblyError.new(AS::ERRSTR_INVALID_ARG, arg)
       end
     end
 
@@ -427,7 +427,7 @@ class AS::ARM::Instruction
             raise AS::AssemblyError.new('reference offset must be an integer literal', argr.right)
           end
         else
-          raise AS::AssemblyError.new('invalid operand argument', arg)
+          raise AS::AssemblyError.new(AS::ERRSTR_INVALID_ARG, arg)
         end
       elsif (arg1.is_a?(AS::Parser::LabelEquivAddrArgNode) or arg1.is_a?(AS::Parser::NumEquivAddrArgNode))
         @i = 0
@@ -438,7 +438,7 @@ class AS::ARM::Instruction
         @use_addrtable_reloc = true
         @addrtable_reloc_target = arg1
       else
-        raise AS::AssemblyError.new('invalid operand argument (not a reference)', arg1)
+        raise AS::AssemblyError.new(AS::ERRSTR_INVALID_ARG, arg1)
       end
     end
     
@@ -499,7 +499,7 @@ class AS::ARM::Instruction
           @operand |= (1 << reg)
         end
       else
-        raise AS::AssemblyError.new('invalid operand argument', arg)
+        raise AS::AssemblyError.new(AS::ERRSTR_INVALID_ARG, arg)
       end
     end
 

@@ -7,6 +7,9 @@ module AS
     end
     attr_reader :node
   end
+  
+  ERRSTR_NUMERIC_TOO_LARGE = 'cannot fit numeric literal argument in operand'
+  ERRSTR_INVALID_ARG = 'invalid operand argument'
 end
 
 require_relative 'parser'
