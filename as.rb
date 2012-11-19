@@ -20,7 +20,7 @@ class AS::CommandLine
       opts.separator "Options:"
 
       opts.on("-t", "--target TARGET",
-              "Specify target architecture (arm)") { |o|
+              "Specify target architecture (arm [default], ttk91)") { |o|
         options.target = o.to_sym
         if (not [:arm, :ttk91].include?(options.target))
           puts opts
